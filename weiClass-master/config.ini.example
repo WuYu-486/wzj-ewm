@@ -1,0 +1,5 @@
+[user]
+openid = 在这里填入你的 openid
+
+[admin]
+token = 首次启动 web.py 时自动生成并打印在控制台

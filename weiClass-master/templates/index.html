@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>二维码状态监听器</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            text-align: center;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .waiting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .info {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            text-align: left;
+        }
+        .info table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .info td {
+            padding: 4px 0;
+            vertical-align: top;
+        }
+        .info td:first-child {
+            width: 40%;
+            color: #666;
+        }
+        .config {
+            margin-top: 25px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border: 1px solid #e3e6e8;
+            border-radius: 5px;
+            text-align: left;
+        }
+        .config.attention {
+            border-color: #f0ad4e;
+            background-color: #fffaf0;
+        }
+        .config h3 {
+            margin: 0 0 10px 0;
+        }
+        .config-current {
+            margin: 0 0 10px 0;
+        }
+        .config-current code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .config textarea,
+        .config input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 13px;
+        }
+        .config-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .config-row input {
+            flex: 1;
+        }
+        .config button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #3498db;
+            color: white;
+            font-size: 13px;
+            font-family: inherit;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .config button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .config-hint {
+            margin: 0 0 10px 0;
+            color: #856404;
+        }
+        .config-result {
+            margin-top: 8px;
+            font-size: 13px;
+        }
+        .config-result.ok {
+            color: #155724;
+        }
+        .config-result.err {
+            color: #721c24;
+        }
+        .message {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>二维码状态监听器</h1>
+        <p>正在监听签到二维码，请稍候...</p>
+
+        <div id="status" class="status waiting">
+            <span class="loading"></span>
+            <span id="status-text">等待签到开始</span>
+        </div>
+
+        <div id="message" class="message" style="display: none;">
+            <strong>消息：</strong><span id="message-content"></span>
+        </div>
+
+        <div id="openid-panel" class="config">
+            <h3>openid 设置</h3>
+            <p class="config-current">
+                当前 openid：<code id="openid-masked">读取中...</code>
+            </p>
+            <p class="config-hint" id="openid-hint" style="display: none;"></p>
+            <textarea id="openid-link" rows="2"
+                placeholder="把含 openid 的链接粘到这里，例如 https://v18.teachermate.cn/wechat-pro-ssr/?openid=xxxx&amp;from=wzj"></textarea>
+            <div class="config-row">
+                <input id="openid-token" type="password" placeholder="管理口令（见服务控制台）">
+                <button id="openid-submit">更换</button>
+            </div>
+            <div id="openid-result" class="config-result"></div>
+            <p class="config-hint" style="margin: 10px 0 0 0;">
+                口令是为了防止同网络下的其他人改掉你的 openid，服务启动时会打印在控制台上。
+                更换立即生效，不需要重启服务。openid 在这里只做脱敏显示。
+            </p>
+        </div>
+
+        <div class="info">
+            <h3>说明：</h3>
+            <p>捕获到新的二维码就会自动跳转签到。同一个二维码只跳一次，
+               二维码刷新后（约 10 秒）会再次跳转，直到本次签到结束。</p>
+            <table>
+                <tr><td>管道状态</td><td id="pipeline">-</td></tr>
+                <tr><td>当前阶段</td><td id="phase">-</td></tr>
+                <tr><td>签到会话</td><td id="session">-</td></tr>
+                <tr><td>二维码轮次</td><td id="round">-</td></tr>
+                <tr><td>二维码年龄</td><td id="age">-</td></tr>
+                <tr><td>最后检查时间</td><td id="last-check">-</td></tr>
+                <tr><td>检查次数</td><td id="check-count">0</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 配置 ====================
+        const POLL_MS = 500;                  // 轮询间隔（毫秒）
+        const SEEN_KEY = 'tm_jumped_rounds_v1'; // 已跳转轮次的本地记忆键
+        const SEEN_TTL_MS = 10 * 60 * 1000;   // 记忆保留时长
+        const ALLOW_STALE = false;            // 过期二维码是否也跳（false = 等下一轮）
+        const TOKEN_KEY = 'tm_admin_token';   // 管理口令的本地记忆键
+
+        // 阶段文案，与后端 Pipeline.get_status() 的 phase 取值对应
+        const PHASE_TEXT = {
+            waiting: '等待签到开始',
+            listening: '已订阅签到，等待二维码',
+            captured: '已捕获二维码',
+            session_closed: '本次签到已结束，继续监听下一次签到',
+            suspected_done: '疑似签到成功（未验证），继续监听下一次签到',
+            error: '出错了',
+            stopped: '服务已停止监听'
+        };
+
+        // ==================== 状态元素 ====================
+        const statusEl = document.getElementById('status');
+        const statusTextEl = document.getElementById('status-text');
+        const messageEl = document.getElementById('message');
+        const messageContentEl = document.getElementById('message-content');
+        const pipelineEl = document.getElementById('pipeline');
+        const phaseEl = document.getElementById('phase');
+        const sessionEl = document.getElementById('session');
+        const roundEl = document.getElementById('round');
+        const ageEl = document.getElementById('age');
+        const lastCheckEl = document.getElementById('last-check');
+        const checkCountEl = document.getElementById('check-count');
+
+        // openid 设置区
+        const openidPanelEl = document.getElementById('openid-panel');
+        const openidMaskedEl = document.getElementById('openid-masked');
+        const openidHintEl = document.getElementById('openid-hint');
+        const openidLinkEl = document.getElementById('openid-link');
+        const openidTokenEl = document.getElementById('openid-token');
+        const openidSubmitEl = document.getElementById('openid-submit');
+        const openidResultEl = document.getElementById('openid-result');
+
+        let pollingTimer = null;   // 非空表示正在轮询
+        let checkCount = 0;
+        let lastPhase = null;      // 只在阶段变化时更新 openid 提示，避免每 500ms 重绘
+
+        // ==================== 已跳转轮次的本地记忆 ====================
+        // 轮次标识来自一次性凭证（extra），永不重复，所以这份记忆不会误伤未来的轮次。
+        // 用 localStorage 而不是 sessionStorage：微信 webview 跳走再回来时
+        // sessionStorage 可能被重建，记忆会丢。
+        function loadSeen() {
+            try {
+                return JSON.parse(localStorage.getItem(SEEN_KEY) || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function hasSeen(roundId) {
+            const now = Date.now();
+            return loadSeen().some(item => item.id === roundId && now - item.ts < SEEN_TTL_MS);
+        }
+
+        function markSeen(roundId) {
+            const now = Date.now();
+            const list = loadSeen()
+                .filter(item => now - item.ts < SEEN_TTL_MS && item.id !== roundId);
+            list.push({ id: roundId, ts: now });
+            try {
+                localStorage.setItem(SEEN_KEY, JSON.stringify(list.slice(-50)));
+            } catch (e) {
+                console.warn('记录已跳转轮次失败:', e);
+            }
+        }
+
+        // ==================== 界面渲染 ====================
+        function setStatus(kind, text) {
+            statusEl.className = 'status ' + (kind === 'success' ? 'success' : 'waiting');
+            statusTextEl.textContent = text;
+        }
+
+        function showMessage(message) {
+            if (message && message.trim() !== '') {
+                messageContentEl.textContent = message;
+                messageEl.style.display = 'block';
+            } else {
+                messageEl.style.display = 'none';
+            }
+        }
+
+        function renderInfo(data) {
+            pipelineEl.textContent = data.pipeline_running ? '运行中' : '已停止';
+            phaseEl.textContent = data.phase || '-';
+            sessionEl.textContent = data.session_id != null
+                ? `第 ${data.session_seq} 个（signId=${data.session_id}）` : '-';
+            roundEl.textContent = data.round_id
+                ? `第 ${data.round_seq} 个（${data.round_id.slice(0, 12)}...）` : '-';
+            ageEl.textContent = data.age_ms != null
+                ? `${(data.age_ms / 1000).toFixed(1)} 秒${data.stale ? '（已过期）' : ''}` : '-';
+        }
+
+        function updateLastCheckTime() {
+            lastCheckEl.textContent = new Date().toLocaleTimeString();
+        }
+
+        function updateCheckCount() {
+            checkCount++;
+            checkCountEl.textContent = checkCount;
+        }
+
+        // ==================== 跳转决策 ====================
+        // 跳转依据是 round_id，不再是 success。success 只表示"当前有一个新鲜的二维码"，
+        // 而 round_id 才能区分"这是新的一轮"还是"上一轮的残留"。
+        function decide(data) {
+            if (data.pipeline_running === false) {
+                return { act: 'idle', why: '服务已停止监听' };
+            }
+            if (data.suspected_done) {
+                return { act: 'idle', why: '疑似签到成功（未验证），等待下一次签到' };
+            }
+            if (!data.round_id || !data.qr_url) {
+                return { act: 'idle', why: data.message || '等待二维码' };
+            }
+            if (data.stale && !ALLOW_STALE) {
+                return { act: 'idle', why: '该二维码已过期，等待下一轮' };
+            }
+            if (hasSeen(data.round_id)) {
+                return { act: 'idle', why: '本轮已跳转过，等待二维码刷新' };
+            }
+            return { act: 'jump', why: '捕获到新二维码' };
+        }
+
+        function jumpTo(data) {
+            // 必须先记账再跳：赋值 location.href 之后页面随时可能被销毁，
+            // 存储写晚了就会丢，刷新回来又会被弹向同一个旧签到页。
+            markSeen(data.round_id);
+            setStatus('success', `已跳转（第 ${data.round_seq} 轮），正在签到...`);
+            showMessage('如果没跳转成功，返回本页面会自动用最新二维码重试');
+            window.location.href = data.qr_url;
+        }
+
+        // ==================== openid 设置 ====================
+        function setOpenidResult(text, kind) {
+            openidResultEl.textContent = text || '';
+            openidResultEl.className = 'config-result' + (kind ? ' ' + kind : '');
+        }
+
+        function restoreAdminToken() {
+            try {
+                const saved = localStorage.getItem(TOKEN_KEY);
+                if (saved) {
+                    openidTokenEl.value = saved;
+                }
+            } catch (e) {
+                console.warn('读取管理口令失败:', e);
+            }
+        }
+
+        async function loadOpenidInfo() {
+            try {
+                const response = await fetch('/openid');
+                const info = await response.json();
+                openidMaskedEl.textContent = info.openid_masked || '未设置';
+            } catch (error) {
+                openidMaskedEl.textContent = '读取失败';
+            }
+        }
+
+        async function submitOpenid() {
+            const link = openidLinkEl.value.trim();
+            const token = openidTokenEl.value.trim();
+
+            if (!link) {
+                setOpenidResult('请先粘贴含 openid 的链接', 'err');
+                return;
+            }
+            if (!token) {
+                setOpenidResult('请填写管理口令（见服务控制台）', 'err');
+                return;
+            }
+
+            openidSubmitEl.disabled = true;
+            setOpenidResult('正在切换...', '');
+
+            try {
+                const response = await fetch('/openid', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({link: link, token: token})
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    try {
+                        localStorage.setItem(TOKEN_KEY, token);
+                    } catch (e) {
+                        console.warn('保存管理口令失败:', e);
+                    }
+                    setOpenidResult(data.message, 'ok');
+                    openidLinkEl.value = '';
+                    await loadOpenidInfo();
+                    checkQRCodeStatus();   // 立刻刷新一次状态
+                } else {
+                    setOpenidResult(data.message || '切换失败', 'err');
+                }
+            } catch (error) {
+                setOpenidResult('请求失败：' + error, 'err');
+            } finally {
+                openidSubmitEl.disabled = false;
+            }
+        }
+
+        openidSubmitEl.addEventListener('click', submitOpenid);
+        openidLinkEl.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                submitOpenid();
+            }
+        });
+
+        // openid 失效时把设置区高亮，直接对上"失效了直接换就行"
+        function renderOpenidHint(data) {
+            if (data.phase === lastPhase) {
+                return;
+            }
+            lastPhase = data.phase;
+
+            if (data.phase === 'error') {
+                openidPanelEl.classList.add('attention');
+                openidHintEl.style.display = 'block';
+                openidHintEl.textContent = 'openid 可能已失效（' + (data.message || '接口报错')
+                    + '），粘上新链接更换即可';
+            } else {
+                openidPanelEl.classList.remove('attention');
+                openidHintEl.style.display = 'none';
+            }
+        }
+
+        // ==================== 轮询 ====================
+        async function checkQRCodeStatus() {
+            try {
+                updateLastCheckTime();
+                updateCheckCount();
+
+                const response = await fetch('/qr_code');
+                const data = await response.json();
+
+                renderInfo(data);
+                renderOpenidHint(data);
+
+                const decision = decide(data);
+                const phaseText = PHASE_TEXT[data.phase] || '监听中';
+
+                if (decision.act === 'jump') {
+                    jumpTo(data);
+                    return;
+                }
+
+                const hasFreshRound = data.round_id && !data.stale;
+                setStatus(hasFreshRound ? 'success' : 'waiting', `${phaseText}（${decision.why}）`);
+                showMessage(data.message);
+            } catch (error) {
+                console.error('检查二维码状态时出错:', error);
+                setStatus('waiting', '检查状态时出错，继续尝试...');
+                showMessage('网络连接错误，正在重试...');
+            }
+        }
+
+        // 幂等：重复调用不会叠加 setInterval
+        function startPolling() {
+            if (pollingTimer) {
+                return;
+            }
+            checkQRCodeStatus();
+            pollingTimer = setInterval(checkQRCodeStatus, POLL_MS);
+        }
+
+        function stopPolling() {
+            if (pollingTimer) {
+                clearInterval(pollingTimer);
+                pollingTimer = null;
+            }
+        }
+
+        // 从签到页返回时页面可能走 bfcache 恢复而不是重新加载，
+        // 所以 pageshow 和 visibilitychange 都要挂上，确保能回到监听状态。
+        document.addEventListener('DOMContentLoaded', function () {
+            restoreAdminToken();
+            loadOpenidInfo();
+            startPolling();
+        });
+        window.addEventListener('pageshow', function () {
+            stopPolling();
+            startPolling();
+        });
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) {
+                startPolling();
+            }
+        });
+    </script>
+</body>
+</html>

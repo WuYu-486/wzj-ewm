@@ -1,0 +1,17 @@
+# 敏感配置：含 openid 与管理口令，绝不提交
+config.ini
+config.ini.*
+# 例外：配置模板要提交，供他人复制为 config.ini
+!config.ini.example
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
